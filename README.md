@@ -19,7 +19,7 @@ A Infinipoint DIaaS authentication node for ForgeRock's [Identity Platform][forg
 This node allows including device identity and security posture check as part of the ForgeRock authentication flow.
 
 
-**INSTALLATION*
+**Installation**
 
 Copy the .jar file from the ../target directory into the ../web-container/webapps/openam/WEB-INF/lib directory where AM is deployed.  Restart the web container to pick up the new node.  The node will then appear in the authentication trees components palette.
 
@@ -45,6 +45,13 @@ Configure your authentication tree using the Infinipoint DIaaS authentication no
 To configure the node, copy 'Client ID', 'Client Secret' and 'Realm Alias' from Infinipoint's console.
 
 ![ScreenShot](./images/config.png)
+
+
+**TODO** 
+* Include Screenshots of end user screens when redirect to Infinipoint
+* Include a list of attributes that downstream nodes have access to in sharedState to query additional information 
+  about the use'rs device from infinipoint
+
 
 
 **Disclaimer**
