@@ -13,7 +13,7 @@
  *
  * Copyright 2020 ForgeRock AS.
 -->
-# InfinipointDIaaS
+# Infinipoint DIaaS (Device-Identity-as-a-Service)
 
 A Infinipoint DIaaS authentication node for ForgeRock's [Identity Platform][forgerock_platform] 7.0.0 and above. 
 This node allows including device identity and security posture check as part of the ForgeRock authentication flow.
