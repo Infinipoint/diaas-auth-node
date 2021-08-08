@@ -17,60 +17,31 @@
 
 package io.infinipoint.DIaaSAuthNode;
 
-import static java.util.Collections.singleton;
-import static java.util.Collections.singletonList;
-import static java.util.Collections.singletonMap;
-import static org.forgerock.json.JsonValue.field;
-import static org.forgerock.json.JsonValue.json;
-import static org.forgerock.json.JsonValue.object;
-import static org.forgerock.oauth.OAuthClientConfiguration.PROVIDER;
-import static org.forgerock.oauth.clients.oauth2.OAuth2Client.DATA;
-import static org.forgerock.oauth.clients.oauth2.OAuth2Client.LANDING_PAGE;
-import static org.forgerock.oauth.clients.oauth2.OAuth2Client.PKCE_CODE_VERIFIER;
-import static org.forgerock.oauth.clients.oauth2.OAuth2Client.STATE;
-import static org.forgerock.oauth.clients.oidc.OpenIDConnectClient.NONCE;
-import static org.forgerock.openam.auth.node.api.Action.goTo;
-import static org.forgerock.openam.auth.node.api.Action.send;
-import static org.forgerock.openam.auth.node.api.SharedStateConstants.USERNAME;
-import static org.forgerock.openam.auth.nodes.oauth.SocialOAuth2Helper.DEFAULT_OAUTH2_SCOPE_DELIMITER;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.math.BigInteger;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.security.SecureRandom;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Scanner;
-import java.util.Set;
-
-import javax.inject.Inject;
-
+import com.google.common.collect.ImmutableList;
+import com.google.inject.assistedinject.Assisted;
+import com.iplanet.am.util.SystemProperties;
+import com.nimbusds.oauth2.sdk.ResponseType;
+import com.nimbusds.oauth2.sdk.Scope;
+import com.nimbusds.oauth2.sdk.auth.Secret;
+import com.nimbusds.oauth2.sdk.client.ClientInformation;
+import com.nimbusds.oauth2.sdk.client.ClientMetadata;
+import com.nimbusds.oauth2.sdk.id.ClientID;
+import com.nimbusds.oauth2.sdk.id.State;
+import com.nimbusds.openid.connect.sdk.AuthenticationRequest;
+import com.nimbusds.openid.connect.sdk.Nonce;
+import com.sun.identity.authentication.spi.AuthLoginException;
+import com.sun.identity.authentication.spi.RedirectCallback;
+import com.sun.identity.shared.Constants;
+import com.sun.identity.sm.RequiredValueValidator;
 import org.apache.commons.lang.StringUtils;
-import org.apache.http.client.utils.URIBuilder;
 import org.forgerock.json.JsonValue;
 import org.forgerock.json.jose.jwt.JwtClaimsSet;
-import org.forgerock.oauth.DataStore;
-import org.forgerock.oauth.OAuthClient;
-import org.forgerock.oauth.OAuthClientConfiguration;
-import org.forgerock.oauth.OAuthException;
-import org.forgerock.oauth.UserInfo;
+import org.forgerock.oauth.*;
 import org.forgerock.oauth.clients.oauth2.PkceMethod;
 import org.forgerock.oauth.clients.oidc.OpenIDConnectClientConfiguration;
 import org.forgerock.oauth.clients.oidc.OpenIDConnectUserInfo;
 import org.forgerock.openam.annotations.sm.Attribute;
-import org.forgerock.openam.auth.node.api.Action;
-import org.forgerock.openam.auth.node.api.ExternalRequestContext;
-import org.forgerock.openam.auth.node.api.Node;
-import org.forgerock.openam.auth.node.api.NodeProcessException;
-import org.forgerock.openam.auth.node.api.OutcomeProvider;
-import org.forgerock.openam.auth.node.api.TreeContext;
+import org.forgerock.openam.auth.node.api.*;
 import org.forgerock.openam.auth.nodes.oauth.AbstractSocialAuthLoginNode;
 import org.forgerock.openam.auth.nodes.oauth.ProfileNormalizer;
 import org.forgerock.openam.auth.nodes.oauth.SharedStateAdaptor;
@@ -83,24 +54,21 @@ import org.forgerock.util.i18n.PreferredLocales;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.ImmutableList;
-import com.google.inject.assistedinject.Assisted;
-import com.iplanet.am.util.SystemProperties;
-import com.nimbusds.oauth2.sdk.ParseException;
-import com.nimbusds.oauth2.sdk.ResponseType;
-import com.nimbusds.oauth2.sdk.Scope;
-import com.nimbusds.oauth2.sdk.auth.Secret;
-import com.nimbusds.oauth2.sdk.client.ClientInformation;
-import com.nimbusds.oauth2.sdk.client.ClientMetadata;
-import com.nimbusds.oauth2.sdk.id.ClientID;
-import com.nimbusds.oauth2.sdk.id.State;
-import com.nimbusds.openid.connect.sdk.AuthenticationRequest;
-import com.nimbusds.openid.connect.sdk.Nonce;
-import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
-import com.sun.identity.authentication.spi.AuthLoginException;
-import com.sun.identity.authentication.spi.RedirectCallback;
-import com.sun.identity.shared.Constants;
-import com.sun.identity.sm.RequiredValueValidator;
+import javax.inject.Inject;
+import java.math.BigInteger;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.security.SecureRandom;
+import java.util.*;
+
+import static java.util.Collections.*;
+import static org.forgerock.oauth.OAuthClientConfiguration.PROVIDER;
+import static org.forgerock.oauth.clients.oauth2.OAuth2Client.*;
+import static org.forgerock.oauth.clients.oidc.OpenIDConnectClient.NONCE;
+import static org.forgerock.openam.auth.node.api.Action.goTo;
+import static org.forgerock.openam.auth.node.api.Action.send;
+import static org.forgerock.openam.auth.node.api.SharedStateConstants.USERNAME;
+import static org.forgerock.openam.auth.nodes.oauth.SocialOAuth2Helper.DEFAULT_OAUTH2_SCOPE_DELIMITER;
 
 @Node.Metadata(outcomeProvider = InfinipointDIaaS.InfinipointComplianceOutcomeProvider.class,
         configClass = InfinipointDIaaS.Config.class, tags = {"contextual"})
@@ -131,13 +99,13 @@ public class InfinipointDIaaS implements Node {
 
         public List<Outcome> getOutcomes(PreferredLocales locales, JsonValue nodeAttributes) {
             return ImmutableList.of(
-                    new Outcome(InfinipointComplianceOutcome.COMPLIANT.name(), "Compliant"),
+                    new Outcome(InfinipointComplianceOutcome.POSTURE_APPROVED.name(), "Posture Approved"),
                     new Outcome(InfinipointComplianceOutcome.USER_NOT_AUTHENTICATED.name(), "User Not Authenticated"));
         }
     }
 
     public enum InfinipointComplianceOutcome {
-        COMPLIANT,
+        POSTURE_APPROVED,
         USER_NOT_AUTHENTICATED;
 
         InfinipointComplianceOutcome() {
@@ -219,6 +187,11 @@ public class InfinipointDIaaS implements Node {
         default String redirectURI() {
             return getServerURL();
         }
+
+        @Attribute(order = 500)
+        default boolean saveUserAttributesToSession() {
+            return false;
+        }
     }
 
 
@@ -275,11 +248,10 @@ public class InfinipointDIaaS implements Node {
             OAUTHConfig oauthConfig = new OAUTHConfig(config.clientId());
             attributes = profileNormalizer.getNormalisedAttributes(userInfo, getJwtClaims(userInfo), oauthConfig);
 
-            //TODO Is there any situation where the device isn't compliant after redirect back from Infinipoint?
-            Action.ActionBuilder action = goTo(InfinipointComplianceOutcome.COMPLIANT.name()).replaceSharedState(context.sharedState);
-            //TODO Attributes returned from infinipoint should be stored in sharedState for downstream nodes to consume (use the device ID to call infinipoint APIs)
-            //TODO Node should have configuration boolean of whether to promote attribute to session properties for other applications to consume
-            attributes.forEach((key, value) -> action.putSessionProperty(key, value.stream().findFirst().get()));
+            Action.ActionBuilder action = goTo(InfinipointComplianceOutcome.POSTURE_APPROVED.name()).replaceSharedState(context.sharedState);
+            if (config.saveUserAttributesToSession()) {
+                attributes.forEach((key, value) -> action.putSessionProperty(key, value.stream().findFirst().get()));
+            }
 
             return action.build();
         } catch (AuthLoginException e) {
@@ -316,78 +288,30 @@ public class InfinipointDIaaS implements Node {
         return ((OpenIDConnectUserInfo) userInfo).getJwtClaimsSet();
     }
 
-    private String oidcProviderConfigUrl() {
-        return INFINIPOINT_SERVER + "/auth/realms/" + config.realmId() + "/.well-known/openid-configuration";
-    }
-
-    //TODO Remove dynamic discovery because configuration is static
-    private OIDCProviderMetadata discoverIssuer() throws NodeProcessException {
-        URL providerConfigurationURL;
-        try {
-            providerConfigurationURL = new URIBuilder(oidcProviderConfigUrl())
-                    .addParameter("client_id", config.clientId())
-                    .build().toURL();
-        } catch (MalformedURLException | URISyntaxException e) {
-            throw new NodeProcessException("Malformed OIDC provider config URI", e);
-        }
-
-        InputStream stream;
-        try {
-            stream = providerConfigurationURL.openStream();
-        } catch (IOException e) {
-            throw new NodeProcessException("Unable to connect to provider discovery URI", e);
-        }
-        String providerInfo;
-        try (Scanner s = new java.util.Scanner(stream)) {
-            providerInfo = s.useDelimiter("\\A").hasNext() ? s.next() : "";
-        }
-
-        OIDCProviderMetadata providerMetadata;
-        try {
-            providerMetadata = OIDCProviderMetadata.parse(providerInfo);
-        } catch (ParseException e) {
-            throw new NodeProcessException("Unable to parse issuer discovery response: " + e.getMessage());
-        }
-        return providerMetadata;
-    }
-
     private Action handleAuthorizationRequest(ExternalRequestContext request, JsonValue sharedState)
             throws NodeProcessException {
 
-        //TODO URLs should be statically defined in configuration to save round trip call per user authentication
-        OIDCProviderMetadata providerMetadata = discoverIssuer();
-        sharedState.put(INFINIPOINT_AUTHORIZATION_ENDPOINT, providerMetadata.getAuthorizationEndpointURI());
-        sharedState.put(INFINIPOINT_TOKEN_ENDPOINT, providerMetadata.getTokenEndpointURI());
-        sharedState.put(INFINIPOINT_USERINFO_ENDPOINT, providerMetadata.getUserInfoEndpointURI());
-        sharedState.put(INFINIPOINT_JWK_ENDPOINT, providerMetadata.getJWKSetURI().toString());
-        sharedState.put(INFINIPOINT_ISSUER, providerMetadata.getIssuer().toString());
+        sharedState.put(INFINIPOINT_AUTHORIZATION_ENDPOINT, getAuthEndpointURI());
+        sharedState.put(INFINIPOINT_TOKEN_ENDPOINT, getTokenEndpoint());
+        sharedState.put(INFINIPOINT_USERINFO_ENDPOINT, getUserInfoEndpoint());
+        sharedState.put(INFINIPOINT_JWK_ENDPOINT, getJwkEndpoint());
+        sharedState.put(INFINIPOINT_ISSUER, getIssuer());
 
         ClientInformation clientInformation = getClientInformation();
 
         State authRequestState = new State();
         sharedState.put("state", authRequestState.getValue());
 
-        //TODO No need to add PKCEVerifier while also using client secret
         final String nonce = new BigInteger(160, random).toString(Character.MAX_RADIX);
         byte[] pkceVerifier = new byte[32];
         random.nextBytes(pkceVerifier);
 
-        final JsonValue authRequestDetails = json(object(
-                field(PROVIDER, INFINIPOINT_PROVIDER),
-                field(STATE, authRequestState.getValue()),
-                field(NONCE, nonce),
-                field(DATA, null),
-                field(LANDING_PAGE, null),
-                field(PKCE_CODE_VERIFIER, Base64url.encode(pkceVerifier))));
-
-        //TODO Why is sharedState being converted to Datastore then back to JsonValue? Instead just add authRequestDetails to sharedState
-        DataStore dataStore = SharedStateAdaptor.toDatastore(json(sharedState));
-        try {
-            dataStore.storeData(authRequestDetails);
-        } catch (OAuthException e) {
-            throw new NodeProcessException(e);
-        }
-        sharedState = SharedStateAdaptor.fromDatastore(dataStore);
+        sharedState.put(PROVIDER, INFINIPOINT_PROVIDER);
+        sharedState.put(STATE, authRequestState.getValue());
+        sharedState.put(NONCE, nonce);
+        sharedState.put(DATA, null);
+        sharedState.put(LANDING_PAGE, null);
+        sharedState.put(PKCE_CODE_VERIFIER, Base64url.encode(pkceVerifier));
 
         URI redirectURI;
         try {
@@ -396,14 +320,10 @@ public class InfinipointDIaaS implements Node {
             throw new NodeProcessException("Malformed redirect URI");
         }
 
-        //TODO AuthenticationRequest.Builder uses effective scopes while the OpenIDConnectClientConfiguration uses VALID_SCOPES_STRING
-        Scope effectiveScopes = providerMetadata.getScopes();
-        effectiveScopes.retainAll(Scope.parse(VALID_SCOPES_STRING));
-
         AuthenticationRequest.Builder authenticationRequestBuilder = new AuthenticationRequest.Builder(
                 new ResponseType(ResponseType.Value.CODE),
-                effectiveScopes, clientInformation.getID(), redirectURI)
-                .endpointURI(providerMetadata.getAuthorizationEndpointURI())
+                Scope.parse(VALID_SCOPES_STRING), clientInformation.getID(), redirectURI)
+                .endpointURI(getAuthEndpointURI())
                 .state(authRequestState).nonce(new Nonce(nonce));
 
         authenticationRequestBuilder = authenticationRequestBuilder.customParameter("login_hint",
@@ -437,6 +357,29 @@ public class InfinipointDIaaS implements Node {
                 .build();
     }
 
+    private URI getAuthEndpointURI() {
+        try {
+            return new URI(String.format("%s/auth/realms/%s/protocol/openid-connect/auth", INFINIPOINT_SERVER, this.config.realmId()));
+        } catch (URISyntaxException ignore) {}
+
+        return null;
+    }
+
+    private String getTokenEndpoint() {
+        return String.format("%s/auth/realms/%s/protocol/openid-connect/token", INFINIPOINT_SERVER, this.config.realmId());
+    }
+
+    private String getUserInfoEndpoint() {
+        return String.format("%s/auth/realms/%s/protocol/openid-connect/userinfo", INFINIPOINT_SERVER, this.config.realmId());
+    }
+
+    private String getJwkEndpoint() {
+        return String.format("%s/auth/realms/%s/protocol/openid-connect/certs", INFINIPOINT_SERVER, this.config.realmId());
+    }
+
+    private String getIssuer() {
+        return String.format("%s/auth/realms/%s", INFINIPOINT_SERVER, this.config.realmId());
+    }
 
     /**
      * build Nimbus ClientInformation that contains the client ID and secret

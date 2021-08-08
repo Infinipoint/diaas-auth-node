@@ -46,11 +46,17 @@ To configure the node, copy 'Client ID', 'Client Secret' and 'Realm Alias' from 
 
 ![ScreenShot](./images/config.png)
 
+When redirected to Infinipoint, device posture is checked and presented to user:
 
-**TODO** 
-* Include Screenshots of end user screens when redirect to Infinipoint
-* Include a list of attributes that downstream nodes have access to in sharedState to query additional information 
-  about the use'rs device from infinipoint
+![ScreenShot](./images/issues.png)
+In case of no issues found or device posture approved:
+
+![ScreenShot](./images/approved.png)
+
+
+**Downstream Nodes Attributes**
+
+This plugin doesn't set any special attributes for downstream nodes.
 
 
 
